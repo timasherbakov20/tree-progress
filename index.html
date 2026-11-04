@@ -32,6 +32,7 @@ body{overflow-x:hidden;-webkit-text-size-adjust:100%}
 .date{margin:4px 0 18px;font:12px var(--mono);color:var(--muted)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px;margin-bottom:12px}
 .card{background:#fff;border:1px solid var(--edge);border-radius:4px;padding:18px}
+#dash>.card{margin-bottom:12px}
 .card h3{margin:0 0 14px;font:400 11px var(--mono);color:var(--muted)}
 .card .note{margin:12px 0 0}
 .rec{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid var(--edge)}
@@ -201,8 +202,8 @@ const h=(t,a={},...c)=>{const e=document.createElement(t);for(const k in a){if(k
    правки хранятся в localStorage этого браузера и не меняют сайт для других */
 let owner=false;
 try{ /* открой сайт один раз со ссылкой ?edit — правка включится на этом устройстве; ?edit=off — выключится */
-  if(/[?&]edit=off/.test(location.search))localStorage.removeItem('achv-owner');
-  else if(/[?&]edit\b/.test(location.search))localStorage.setItem('achv-owner','1');
+  if(/[?&#]edit=?off/.test(location.search+location.hash))localStorage.removeItem('achv-owner');
+  else if(/[?&#]edit\b/.test(location.search+location.hash))localStorage.setItem('achv-owner','1');
   owner=localStorage.getItem('achv-owner')==='1';
 }catch(e){}
 const canEdit=owner||location.protocol==='file:'||['localhost','127.0.0.1'].includes(location.hostname);
@@ -212,7 +213,7 @@ let D=JSON.parse(JSON.stringify(DATA));
 if(canEdit)try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.root&&Array.isArray(s.tree))D=s}catch(e){}
 D.tree.forEach(norm);
 const ser=()=>JSON.stringify(D,(k,v)=>k==='id'||(k==='children'&&!v.length)?undefined:v,2);
-const save=()=>{if(canEdit)try{localStorage.setItem(KEY,ser())}catch(e){}};
+const save=()=>{if(canEdit)try{localStorage.setItem(KEY,ser())}catch(e){}touch()};
 const prog=n=>n.children.length?n.children.reduce((s,c)=>s+prog(c),0)/n.children.length:(n.done?100:n.progress);
 const isDone=n=>n.children.length?n.children.every(isDone):n.done;
 
@@ -370,15 +371,15 @@ if(canEdit){
   $('#bdl').onclick=()=>{const a=h('a',{href:URL.createObjectURL(new Blob([JSON.stringify({...JSON.parse(ser()),log:LOG},null,2)],{type:'application/json'})),download:'achievements.json'});a.click()};
   $('#bup').onclick=()=>$('#fi').click();
   $('#fi').onchange=async e=>{const f=e.target.files[0];if(!f)return;
-    try{const t=await f.text(),s=JSON.parse(t);if(!s.root||!Array.isArray(s.tree))throw 0;localStorage.setItem(KEY,JSON.stringify({root:s.root,tree:s.tree}));if(Array.isArray(s.log))localStorage.setItem(LK,JSON.stringify(s.log));location.reload()}
+    try{const t=await f.text(),s=JSON.parse(t);if(!s.root||!Array.isArray(s.tree))throw 0;localStorage.setItem(KEY,JSON.stringify({root:s.root,tree:s.tree}));localStorage.setItem('achv-rev',Date.now());if(Array.isArray(s.log))localStorage.setItem(LK,JSON.stringify(s.log));location.reload()}
     catch(_){alert('Файл не похож на данные дерева: нужны поля root и tree.')}};
-  $('#brst').onclick=()=>{if(confirm('Сбросить правки и вернуть данные из файла?')){localStorage.removeItem(KEY);location.reload()}};
+  $('#brst').onclick=()=>{if(confirm('Сбросить правки и вернуть данные из файла?')){localStorage.removeItem(KEY);localStorage.setItem('achv-rev',Date.now());location.reload()}};
 }
 let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>render(false),200)});
 /* ===== ДАШБОРД: рекомендации, журнал занятий, статистика (виден только владельцу) ===== */
 const LK='achv-log-v1';let LOG=[];
 if(canEdit)try{LOG=JSON.parse(localStorage.getItem(LK))||[]}catch(e){}
-const saveLog=()=>{try{localStorage.setItem(LK,JSON.stringify(LOG))}catch(e){}};
+const saveLog=()=>{try{localStorage.setItem(LK,JSON.stringify(LOG))}catch(e){}touch()};
 /* глагол в рекомендациях по названию категории — меняйте под свои */
 const VERB={'Книги':'Почитать','Спорт':'Потренироваться','Языки':'Позаниматься','Технические проекты':'Поработать над проектом'};
 const fmt=m=>m>=60?Math.floor(m/60)+' ч'+(m%60?' '+m%60+' м':''):m+' м';
@@ -429,7 +430,7 @@ function dash(){
     h('label',{class:'f'},h('span',{},'Прогресс после занятия: ',pv),rg),go);
   root.append(h('div',{class:'grid'},recCard,logCard));
   /* статистика */
-  if(!LOG.length){root.append(h('div',{class:'card'},h('h3',{},'СТАТИСТИКА'),h('p',{class:'desc'},'Графики появятся после первой записи занятия.')));return}
+  if(!LOG.length){root.append(h('div',{class:'card'},h('h3',{},'СТАТИСТИКА'),h('p',{class:'desc'},'Графики появятся после первой записи занятия.')),syncCard());return}
   const byDay={};LOG.forEach(l=>byDay[l.d]=(byDay[l.d]||0)+l.m);
   const lastN=k=>{const a=[];for(let i=k-1;i>=0;i--)a.push(ymd(addDays(now,-i)));return a};
   const sumD=a=>S(a.map(d=>byDay[d]||0)),w14=lastN(14),w7=w14.slice(7),wk=sumD(w7),pw=sumD(w14.slice(0,7));
@@ -452,7 +453,7 @@ function dash(){
   const tCard=h('div',{class:'card'},h('h3',{},'ВРЕМЯ ПО КАТЕГОРИЯМ · 30 ДНЕЙ'),rows(cl.map(([k,c])=>({k,v:c.m})).sort((a,b)=>b.v-a.v),fmt));
   const eCard=h('div',{class:'card'},h('h3',{},'КПД ПО КАТЕГОРИЯМ · % ПРОГРЕССА В ЧАС'),rows(cl.map(([k,c])=>({k,v:Math.round(c.dp/(c.m/60))})).sort((a,b)=>b.v-a.v),v=>'+'+v+'%'),h('p',{class:'note'},'КПД = на сколько процентов продвинулись пункты за час занятий.'));
   const lg=h('div',{class:'card'},h('h3',{},'ПОСЛЕДНИЕ ЗАПИСИ'),LOG.slice(-5).reverse().map(l=>h('div',{class:'lg'},h('div',{},l.name,h('br'),h('span',{},l.d+' · '+fmt(l.m)+(l.dp?' · +'+l.dp+'%':''))),h('button',{'aria-label':'Удалить запись',onclick:()=>{LOG.splice(LOG.indexOf(l),1);saveLog();dash()}},'×'))));
-  root.append(kCard,h('div',{class:'grid'},h('div',{class:'card'},h('h3',{},'АКТИВНОСТЬ · 13 НЕДЕЛЬ'),heat),h('div',{class:'card'},h('h3',{},'МИНУТЫ ПО ДНЯМ'),cols),tCard,eCard,lg));
+  root.append(kCard,h('div',{class:'grid'},h('div',{class:'card'},h('h3',{},'АКТИВНОСТЬ · 13 НЕДЕЛЬ'),heat),h('div',{class:'card'},h('h3',{},'МИНУТЫ ПО ДНЯМ'),cols),tCard,eCard,lg),syncCard());
 }
 /* кнопка-иконка: из неё «вылетают» шарики дерева */
 function toggleTree(open,scroll=true){
@@ -462,8 +463,64 @@ function toggleTree(open,scroll=true){
   $('#lb').setAttribute('aria-expanded',on);
 }
 $('#lb').onclick=()=>toggleTree();
+/* ===== СИНХРОНИЗАЦИЯ между устройствами через секретный Gist на GitHub =====
+   Данные (дерево + журнал занятий) лежат в файле achievements.json вашего гиста.
+   Побеждает самая свежая версия (по времени последней правки). */
+const SK='achv-sync',RK='achv-rev',GF='achievements.json';
+let cfg=null,REV=0,pt=null,syncMsg='';
+try{cfg=JSON.parse(localStorage.getItem(SK));REV=+localStorage.getItem(RK)||0}catch(e){}
+const gh=(m,body)=>fetch('https://api.github.com/gists/'+cfg.gist,{method:m,headers:{Authorization:'Bearer '+cfg.token,Accept:'application/vnd.github+json','Content-Type':'application/json'},body});
+function setMsg(t){syncMsg=t;const e=$('#syncst');if(e)e.textContent=t}
+function touch(){
+  if(!canEdit)return;REV=Date.now();try{localStorage.setItem(RK,REV)}catch(e){}
+  if(cfg){clearTimeout(pt);setMsg('Отправляю изменения…');pt=setTimeout(push,1500)}
+}
+async function push(){
+  if(!cfg)return;pt=null;
+  try{
+    const r=await gh('PATCH',JSON.stringify({files:{[GF]:{content:JSON.stringify({rev:REV,...JSON.parse(ser()),log:LOG})}}}));
+    if(!r.ok)throw new Error(r.status);
+    setMsg('Синхронизировано в '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}));
+  }catch(e){setMsg('Не удалось отправить ('+e.message+'). Проверьте токен, ID и интернет.')}
+}
+async function pull(){
+  if(!cfg||pt)return;
+  try{
+    const r=await gh('GET');if(!r.ok)throw new Error(r.status);
+    const f=(await r.json()).files[GF];let rem=null;
+    try{rem=f&&JSON.parse(f.content)}catch(e){}
+    if(rem&&rem.rev>REV&&rem.root&&Array.isArray(rem.tree)){
+      D={root:rem.root,tree:rem.tree};D.tree.forEach(norm);LOG=Array.isArray(rem.log)?rem.log:[];REV=rem.rev;
+      try{localStorage.setItem(KEY,ser());localStorage.setItem(LK,JSON.stringify(LOG));localStorage.setItem(RK,REV)}catch(e){}
+      expanded.clear();sel=null;dash();refresh();setMsg('Загружены данные с другого устройства');
+    }else if(!rem||!(rem.rev>=REV))await push();
+    else setMsg('Синхронизировано: данные совпадают');
+  }catch(e){setMsg('Не удалось загрузить ('+e.message+'). Проверьте токен и ID.')}
+}
+function syncCard(){
+  const c=h('div',{class:'card'},h('h3',{},'СИНХРОНИЗАЦИЯ МЕЖДУ УСТРОЙСТВАМИ'));
+  if(cfg){
+    c.append(h('p',{class:'desc',id:'syncst'},syncMsg||'Подключено'),
+      h('div',{class:'row',style:'margin-top:14px'},
+        h('button',{class:'btn',onclick:()=>{pull().then(()=>toast('Готово'))}},'Синхронизировать сейчас'),
+        h('button',{class:'btn danger',onclick:()=>{if(confirm('Отключить синхронизацию на этом устройстве?')){try{localStorage.removeItem(SK)}catch(e){}cfg=null;dash()}}},'Отключить')));
+  }else{
+    const tk=h('input',{type:'text',placeholder:'ghp_…'}),gi=h('input',{type:'text',placeholder:'ссылка или ID гиста'});
+    [tk,gi].forEach(i=>{i.setAttribute('autocapitalize','off');i.setAttribute('autocomplete','off');i.spellcheck=false});
+    c.append(h('label',{class:'f'},h('span',{},'Токен GitHub (с правом gist)'),tk),h('label',{class:'f'},h('span',{},'Ссылка на гист или его ID'),gi),
+      h('button',{class:'btn on',onclick:()=>{
+        const id=(gi.value.trim().split('#')[0].split('/').pop()||''),t=tk.value.trim();
+        if(!id||!t){toast('Заполните оба поля');return}
+        cfg={token:t,gist:id};try{localStorage.setItem(SK,JSON.stringify(cfg))}catch(e){}
+        dash();pull();
+      }},'Подключить'),
+      h('p',{class:'note'},'Токен хранится только на этом устройстве. Подключить нужно один раз на каждом устройстве.'));
+  }
+  return c;
+}
 lsum();dash();
 if(!canEdit)toggleTree(true,false);
+if(cfg&&canEdit){pull();document.addEventListener('visibilitychange',()=>{if(!document.hidden)pull()})}
 })();
 </script>
 </body>
