@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Дерево достижений</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+<style>
+/* ===== ПАЛИТРА: меняйте здесь ===== */
+:root{
+  --bg:#F2F3F5;      /* фон */
+  --ink:#15181C;     /* точки, заголовки */
+  --muted:#737A85;   /* даты, подписи */
+  --line:#B9BFC9;    /* линии */
+  --accent:#3B5BDB;  /* прогресс, выбранное */
+  --edge:#D9DDE3;    /* рамки панели */
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+html{scroll-behavior:smooth}
+body{overflow-x:hidden;-webkit-text-size-adjust:100%}
+#mapbox{display:none;position:relative;height:100vh;height:100svh;overflow:hidden}
+#map{position:absolute;inset:0;width:100%;height:100%}
+/* дашборд */
+#dash{max-width:920px;margin:0 auto;padding:max(22px,env(safe-area-inset-top)) 16px 8px}
+#dash h1{margin:0;font-size:26px;font-weight:500}
+.date{margin:4px 0 18px;font:12px var(--mono);color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px;margin-bottom:12px}
+.card{background:#fff;border:1px solid var(--edge);border-radius:4px;padding:18px}
+.card h3{margin:0 0 14px;font:400 11px var(--mono);color:var(--muted)}
+.card .note{margin:12px 0 0}
+.rec{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid var(--edge)}
+.rec:first-of-type{border-top:0;padding-top:0}
+.rec b{display:block;font-weight:500;font-size:15px;line-height:1.3}
+.rec span{font-size:12px;color:var(--muted)}
+.chips{display:flex;gap:6px;margin:8px 0 14px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.kpis b{display:block;font-size:24px;font-weight:500;line-height:1.1}
+.kpis span{font-size:11px;color:var(--muted);line-height:1.3;display:block;margin-top:4px}
+.heat{display:grid;grid-template-columns:repeat(13,1fr);grid-template-rows:repeat(7,auto);grid-auto-flow:column;gap:3px}
+.heat i{aspect-ratio:1;background:#E6E9ED;border-radius:2px;display:block}
+.cols{display:flex;gap:8px;align-items:flex-end;height:130px}
+.cols div{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;font:10px var(--mono);color:var(--muted)}
+.cols i{display:block;width:100%;background:var(--accent);border-radius:2px 2px 0 0}
+.hrow{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:center;margin:0 0 10px;font-size:13px}
+.trk{height:6px;background:#E6E9ED;border-radius:3px}
+.trk i{display:block;height:6px;background:var(--accent);border-radius:3px}
+.hrow em{font:12px var(--mono);font-style:normal;color:var(--muted)}
+.lg{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:7px 0;border-top:1px solid var(--edge);font-size:13px}
+.lg span{color:var(--muted);font:12px var(--mono)}
+.lg button{background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 8px}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:#fff;font:12px var(--mono);padding:9px 14px;border-radius:3px;z-index:9}
+#launch{text-align:center;padding:30px 16px 38px}
+#lb{width:76px;height:76px;border-radius:50%;border:1px solid var(--ink);background:#fff;color:var(--ink);cursor:pointer;display:inline-grid;place-items:center;transition:border-color .3s,color .3s}
+#lb:hover,#lb[aria-expanded=true]{border-color:var(--accent);color:var(--accent)}
+#lc{margin:14px 0 2px;font-size:16px;font-weight:500}
+#ls{margin:0;font:12px var(--mono);color:var(--muted)}
+#cam{transition:transform .9s cubic-bezier(.3,.7,.2,1)}
+.edge{stroke:var(--line);stroke-width:1;fill:none;transition:opacity .4s}
+.edge.fresh{stroke-dasharray:1;stroke-dashoffset:1;animation:draw .8s ease-out forwards;animation-delay:var(--d,0s)}
+@keyframes draw{to{stroke-dashoffset:0}}
+@keyframes fly{from{opacity:0;transform:translate(var(--fx,0),var(--fy,0))}}
+.node{cursor:pointer;outline:none;transition:opacity .3s}
+.fresh .nb{animation:fly .75s cubic-bezier(.2,.8,.2,1) backwards;animation-delay:var(--d,0s)}
+.out{opacity:0!important}
+.nb{transition:opacity .5s}
+.dim .nb,.edge.dim{opacity:.22}
+.dot{fill:var(--ink);transition:fill .3s}
+.ach .dot{fill:var(--bg);stroke:var(--ink);stroke-width:1.2}
+.track{stroke:var(--line);stroke-width:2;opacity:.6}
+.arc{stroke:var(--accent);stroke-width:2;stroke-linecap:round;transition:stroke-dasharray .6s}
+.root .track,.root .arc{display:none}
+.done .dot{fill:var(--accent);stroke:var(--accent)}
+.node:hover .dot{fill:var(--accent)}
+.hit{fill:transparent}
+.node:focus-visible .hit{stroke:var(--accent);stroke-dasharray:3 3}
+.lab{fill:var(--ink);font-size:15px;font-weight:500;paint-order:stroke;stroke:var(--bg);stroke-width:4px;stroke-linejoin:round;pointer-events:none}
+.ach .lab{font-size:13px;font-weight:400;fill:var(--muted)}
+.root .lab{font-size:24px}
+.sel .lab{fill:var(--accent)}
+.cnt{font:11px var(--mono);fill:var(--muted)}
+.sub{font:11px var(--mono);fill:var(--muted);text-anchor:middle;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
+#hint{position:absolute;left:0;right:0;bottom:22px;text-align:center;font-size:13px;color:var(--muted);transition:opacity .6s;pointer-events:none}
+#hint.gone{opacity:0}
+/* панель */
+#panel{position:fixed;top:0;right:0;bottom:0;width:340px;background:#fff;border-left:1px solid var(--edge);padding:28px 26px;overflow:auto;transform:translateX(100%);transition:transform .45s cubic-bezier(.2,.8,.2,1);z-index:4}
+.pan #panel{transform:none}
+#px{position:absolute;top:8px;right:10px;background:none;border:0;color:var(--muted);font-size:24px;line-height:1;cursor:pointer;padding:6px}
+#pc h2{margin:0 0 14px;font-size:23px;line-height:1.25;font-weight:500}
+.meta{margin:0 0 10px;font:12px var(--mono);color:var(--muted)}
+.meta i{font-style:normal;margin-left:12px}
+.bar{height:3px;background:#E3E6EA;margin:0 0 6px}
+.bar b{display:block;height:100%;background:var(--accent);transition:width .5s}
+.pct{margin:0 0 18px;font:12px var(--mono);color:var(--accent)}
+.desc{margin:0;font-size:16px;line-height:1.6;color:#4a505a}
+.note{margin:0 0 14px;font-size:12px;line-height:1.5;color:var(--muted)}
+.f{display:block;margin:0 0 14px}
+.f span{display:block;font:11px var(--mono);color:var(--muted);margin-bottom:5px}
+input[type=text],input[type=number],input[type=date],select,textarea{width:100%;font:15px var(--sans);padding:8px 10px;border:1px solid var(--edge);border-radius:3px;background:#fff;color:var(--ink);resize:vertical}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.chk{display:flex;gap:8px;align-items:center;margin:0 0 18px;font-size:14px;cursor:pointer}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{font:12px var(--mono);padding:7px 10px;border:1px solid #cfd4db;background:#fff;border-radius:3px;cursor:pointer;color:var(--ink);list-style:none}
+.btn:hover{border-color:var(--accent)}
+.btn.danger{color:#b3261e}
+.btn.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+/* инструменты правки */
+#tools{position:absolute;top:16px;left:16px;display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;max-width:calc(100% - 32px);z-index:5}
+#ed{display:flex;gap:8px;align-items:flex-start}
+details{position:relative}
+summary::-webkit-details-marker{display:none}
+.menu{position:absolute;margin-top:6px;background:#fff;border:1px solid var(--edge);border-radius:3px;padding:10px;display:flex;flex-direction:column;gap:6px;width:260px}
+@media (max-width:700px){
+  input[type=text],input[type=number],input[type=date],select,textarea{font-size:16px}
+  .ach .lab{font-size:12px}
+  .btn{padding:9px 12px}
+  #panel{top:auto;left:0;width:auto;height:52vh;border-left:0;border-top:1px solid var(--edge);transform:translateY(100%)}
+  .pan #panel{transform:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:.01s!important}.edge.fresh{stroke-dashoffset:0}}
+</style>
+</head>
+<body>
+<main id="dash" hidden></main>
+<section id="launch">
+  <button id="lb" aria-expanded="false" aria-label="Дерево достижений">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="15" cy="15" r="3" fill="currentColor"/><circle cx="5" cy="6" r="2"/><circle cx="25" cy="7" r="2"/><circle cx="6" cy="25" r="2"/><circle cx="25" cy="24" r="2"/><path d="M15 15L5 6M15 15L25 7M15 15L6 25M15 15L25 24"/></svg>
+  </button>
+  <p id="lc">Дерево достижений</p><p id="ls"></p>
+</section>
+<div id="mapbox">
+<svg id="map" role="group" aria-label="Карта достижений"><g id="cam"><g id="edges"></g><g id="nodes"></g></g></svg>
+<p id="hint">Нажмите на категорию, чтобы увидеть достижения</p>
+<div id="tools" hidden>
+  <button class="btn" id="tg">Править</button>
+  <span id="ed" hidden>
+    <button class="btn" id="addc">+ Категория</button>
+    <details><summary class="btn">Данные</summary>
+      <div class="menu">
+        <button class="btn" id="bcopy">Скопировать код для файла</button>
+        <button class="btn" id="bdl">Скачать JSON</button>
+        <button class="btn" id="bup">Загрузить JSON</button>
+        <button class="btn danger" id="brst">Сбросить к данным из файла</button>
+        <p class="note">Правки хранятся только в этом браузере. Чтобы опубликовать: «Скопировать код» и вставьте вместо <code>const DATA = …;</code> в index.html.</p>
+      </div></details>
+  </span>
+</div>
+</div>
+<input type="file" id="fi" accept=".json,application/json" hidden>
+<aside id="panel"><button id="px" aria-label="Закрыть">×</button><div id="pc"></div></aside>
+
+<script>
+/* ===== ДАННЫЕ — то, что видят посетители сайта =====
+   root: имя в центре. tree: категории верхнего уровня.
+   Узел: name, date (ГГГГ-ММ), group, desc, progress (0–100), done (true/false), children (подпункты, любая глубина).
+   У узла с children прогресс считается автоматически по подпунктам.
+   Удобнее править в режиме правки на сайте и копировать код кнопкой «Данные». */
+const DATA = {
+  root: { name: "Тимофей", tagline: "достижения" },
+  tree: [
+    { name: "Образование", children: [
+      { name: "Призёр школьной олимпиады по физике", date: "2025-12", group: "Олимпиады", desc: "Решил задачи по механике и электричеству, разобрал ошибки с учителем.", progress: 100, done: true },
+      { name: "Курс по математическому анализу", date: "2026-03", group: "Онлайн-курсы", desc: "Пределы, производные, интегралы — с конспектом и задачами.", progress: 60 },
+      { name: "Углублённая математика", date: "2025-09", group: "Школа", desc: "Дополнительные занятия по алгебре и геометрии.", progress: 100, done: true } ] },
+    { name: "Технические проекты", children: [
+      { name: "Первая схема на Arduino", date: "2025-06", group: "Электроника", desc: "Датчик температуры и вывод на дисплей.", progress: 100, done: true },
+      { name: "Сайт-визитка на чистом JS", date: "2026-01", group: "Программирование", desc: "Первая страница на GitHub Pages.", progress: 100, done: true },
+      { name: "Прототип собственного устройства", date: "2026-08", group: "Конструирование", desc: "От компонентов до программы.", children: [
+        { name: "Подобрать компоненты", progress: 100, done: true },
+        { name: "Собрать схему", progress: 30 },
+        { name: "Написать прошивку", progress: 0 } ] } ] },
+    { name: "Книги", children: [
+      { name: "Фейнмановские лекции, т. 1", date: "2026-02", group: "Физика", desc: "Читаю главы и разбираю задачи.", progress: 45 },
+      { name: "Популярная история науки", date: "2025-11", group: "История", desc: "Как появились идеи современной физики.", progress: 100, done: true } ] },
+    { name: "Спорт", children: [
+      { name: "Регулярные тренировки", date: "2026-04", group: "Режим", desc: "Три тренировки в неделю.", progress: 70 },
+      { name: "Шахматы", desc: "Игра и подготовка к разряду.", children: [
+        { name: "Турнирная практика", date: "2026-05", progress: 50 },
+        { name: "Разряд шахматиста", desc: "Нужно выполнить норму на турнирах.", progress: 20 } ] } ] },
+    { name: "Языки", children: [
+      { name: "Английский: средний уровень", date: "2026-06", group: "Английский", desc: "Читаю технические тексты, учусь говорить свободнее.", progress: 65 },
+      { name: "Подготовка к экзамену", date: "2026-10", group: "Сертификаты", desc: "План занятий и пробные тесты.", progress: 15 } ] },
+    { name: "Личностный рост", children: [
+      { name: "Меньше экранного времени", date: "2026-10", group: "Привычки", desc: "Сократить бесцельную прокрутку ленты.", progress: 40 },
+      { name: "План поступления за границу", date: "2026-10", group: "Цели", desc: "Вузы, требования, сроки.", progress: 25 } ] }
+  ]
+};
+
+(()=>{
+const NS='http://www.w3.org/2000/svg',$=s=>document.querySelector(s),KEY='achv-tree-v1';
+const svg=$('#map'),cam=$('#cam'),E=$('#edges'),N=$('#nodes'),box=$('#mapbox');
+const el=(n,a,p)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);p&&p.appendChild(e);return e};
+const h=(t,a={},...c)=>{const e=document.createElement(t);for(const k in a){if(k==='class')e.className=a[k];else if(k.startsWith('on'))e.addEventListener(k.slice(2),a[k]);else if(k in e)e[k]=a[k];else e.setAttribute(k,a[k])}c.flat().forEach(x=>e.append(x));return e};
+/* правка доступна только локально (file://, localhost) или с ?edit в адресе;
+   правки хранятся в localStorage этого браузера и не меняют сайт для других */
+let owner=false;
+try{ /* открой сайт один раз со ссылкой ?edit — правка включится на этом устройстве; ?edit=off — выключится */
+  if(/[?&]edit=off/.test(location.search))localStorage.removeItem('achv-owner');
+  else if(/[?&]edit\b/.test(location.search))localStorage.setItem('achv-owner','1');
+  owner=localStorage.getItem('achv-owner')==='1';
+}catch(e){}
+const canEdit=owner||location.protocol==='file:'||['localhost','127.0.0.1'].includes(location.hostname);
+let uid=0;
+const norm=n=>{n.id='n'+(++uid);n.progress=+n.progress||0;n.done=!!n.done;n.children=n.children||[];n.children.forEach(norm);return n};
+let D=JSON.parse(JSON.stringify(DATA));
+if(canEdit)try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.root&&Array.isArray(s.tree))D=s}catch(e){}
+D.tree.forEach(norm);
+const ser=()=>JSON.stringify(D,(k,v)=>k==='id'||(k==='children'&&!v.length)?undefined:v,2);
+const save=()=>{if(canEdit)try{localStorage.setItem(KEY,ser())}catch(e){}};
+const prog=n=>n.children.length?n.children.reduce((s,c)=>s+prog(c),0)/n.children.length:(n.done?100:n.progress);
+const isDone=n=>n.children.length?n.children.every(isDone):n.done;
+
+let W,H,cx,cy,R2,sel=null,editing=false,expanded=new Set(),els=new Map();
+const collapseDeep=n=>{expanded.delete(n.id);n.children.forEach(collapseDeep)};
+const expand=(n,d)=>{if(d===1)D.tree.forEach(t=>t!==n&&collapseDeep(t));expanded.add(n.id)};
+function remove(n,list=D.tree,par=null){const i=list.indexOf(n);if(i>=0){list.splice(i,1);return par}for(const c of list){const r=remove(n,c.children,c);if(r!==undefined)return r}}
+
+function mk(){
+  const g=el('g',{class:'node',tabindex:0,role:'button'},N),nb=el('g',{class:'nb'},g);
+  const o={g,nb,ln:null,t:performance.now()};
+  o.track=el('circle',{class:'track',fill:'none'},nb);
+  o.arc=el('circle',{class:'arc',fill:'none',pathLength:100,transform:'rotate(-90)'},nb);
+  o.dot=el('circle',{class:'dot'},nb);o.hit=el('circle',{class:'hit'},nb);
+  o.txt=el('text',{class:'lab'},nb);
+  g.addEventListener('click',e=>{e.stopPropagation();click(o.item)});
+  g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();click(o.item)}});
+  return o;
+}
+
+function render(anim=true){
+  lsum();
+  if(box.style.display!=='block')return;
+  W=box.clientWidth;H=box.clientHeight;cx=W/2;cy=H/2;R2=W<600?105:Math.min(W,H)*.2;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const root={n:D.root,id:'root',x:cx,y:cy,out:Math.PI/2,d:0,root:1},vis=[root];
+  const n=D.tree.length,rx=Math.min(W*.34,H*.5),ry=Math.min(H*.33,W*.5);
+  const place=it=>{
+    const kids=it.n.children;if(!kids.length||!expanded.has(it.n.id))return;
+    const m=kids.length,spread=Math.min(it.d>1?2.2:2.7,.8*(m-1)+.3),R=R2*(it.d>1?.85:1);
+    kids.forEach((c,k)=>{
+      const a=it.out+(m>1?(k/(m-1)-.5)*spread:0),r=R*(k%2?1.1:.85);
+      const x=Math.min(W-50,Math.max(50,it.x+Math.cos(a)*r)),y=Math.min(H-40,Math.max(40,it.y+Math.sin(a)*r));
+      const ch={n:c,id:c.id,x,y,out:Math.atan2(y-it.y,x-it.x),d:it.d+1,p:it,k,top:it.top};vis.push(ch);place(ch);
+    });
+  };
+  D.tree.forEach((t,i)=>{
+    const a=-Math.PI/2+i*2*Math.PI/n+(i%2?.12:-.08),q=i%2?1:.88,x=cx+rx*Math.cos(a)*q,y=cy+ry*Math.sin(a)*q;
+    const it={n:t,id:t.id,x,y,out:Math.atan2(y-cy,x-cx),d:1,p:root,k:i,top:t.id};vis.push(it);place(it);
+  });
+  /* разводим пересекающиеся точки */
+  const gap=W<700?68:58;
+  for(let k=0;k<40;k++){
+    for(let i=0;i<vis.length;i++)for(let j=i+1;j<vis.length;j++){
+      const a=vis[i],b=vis[j];let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);
+      if(d>=gap)continue;if(d<.01){dx=1;dy=.3;d=Math.hypot(dx,dy)}
+      const ux=dx/d,uy=dy/d,f=gap-d,ma=a.root?0:b.root?1:.5,mb=a.root?1:b.root?0:.5;
+      a.x-=ux*f*ma;a.y-=uy*f*ma;b.x+=ux*f*mb;b.y+=uy*f*mb;
+    }
+    vis.forEach(v=>{if(!v.root){v.x=Math.min(W-44,Math.max(44,v.x));v.y=Math.min(H-36,Math.max(36,v.y))}});
+  }
+  vis.forEach(v=>{if(v.p)v.out=Math.atan2(v.y-v.p.y,v.x-v.p.x)});
+  const act=D.tree.find(t=>expanded.has(t.id));const actId=act?act.id:null;
+  const ids=new Set(vis.map(v=>v.id));
+  for(const [id,o] of els)if(!ids.has(id)){els.delete(id);o.g.classList.add('out');o.ln&&o.ln.classList.add('out');setTimeout(()=>{o.g.remove();o.ln&&o.ln.remove()},350)}
+  const now=performance.now();
+  for(const it of vis){
+    let o=els.get(it.id);
+    if(!o){o=mk();els.set(it.id,o);if(!anim)o.t=-9999;
+      const d=(it.root?0:.05+it.k*.08)+'s';o.nb.style.setProperty('--d',d);
+      if(it.p){o.nb.style.setProperty('--fx',(it.p.x-it.x)+'px');o.nb.style.setProperty('--fy',(it.p.y-it.y)+'px');
+        o.ln=el('line',{class:'edge',pathLength:1},E);o.ln.style.setProperty('--d',d)}}
+    o.item=it;const n=it.n,kids=it.root?0:n.children.length,exp=expanded.has(n.id);
+    const pr=it.root?0:prog(n),dn=!it.root&&isDone(n),dimmed=actId&&(it.root||it.top!==actId),fresh=now-o.t<1500;
+    const r=it.root?7:[0,5,3.5,3,3][Math.min(it.d,4)],rr=r+5;
+    o.g.setAttribute('class',['node',it.root?'root':it.d===1?'cat':'ach',dn&&'done',sel===n&&'sel',dimmed&&'dim',fresh&&'fresh'].filter(Boolean).join(' '));
+    o.g.setAttribute('transform',`translate(${it.x} ${it.y})`);
+    o.g.setAttribute('aria-label',n.name);
+    o.track.setAttribute('r',rr);o.arc.setAttribute('r',rr);o.arc.setAttribute('stroke-dasharray',`${dn?100:pr} 100`);
+    o.dot.setAttribute('r',r);o.hit.setAttribute('r',Math.max(W<700?22:18,rr+6));
+    const ang=it.root?Math.PI/2:it.out,c=Math.cos(ang),s=Math.sin(ang),mid=Math.abs(c)<.35,fs=it.root?24:it.d===1?15:13,off=it.root?30:rr+8;
+    o.txt.setAttribute('x',c*off);o.txt.setAttribute('y',s*off+(mid?(s>0?fs:-4):fs*.32));
+    o.txt.setAttribute('text-anchor',c>.35?'start':c<-.35?'end':'middle');
+    const nm=n.name||'Без названия';o.txt.textContent=W<700&&nm.length>17?nm.slice(0,16)+'…':nm;
+    if(kids&&!exp){el('tspan',{class:'cnt',dx:6},o.txt).textContent=kids}
+    if(it.root){if(!o.sub)o.sub=el('text',{class:'sub',transform:'translate(0 66)'},o.nb);o.sub.textContent=D.root.tagline||''}
+    if(o.ln){
+      o.ln.setAttribute('x1',it.p.x);o.ln.setAttribute('y1',it.p.y);o.ln.setAttribute('x2',it.x);o.ln.setAttribute('y2',it.y);
+      o.ln.setAttribute('class','edge'+(dimmed?' dim':'')+(fresh?' fresh':''));
+    }
+  }
+  /* камера: приближаемся к раскрытой категории, учитываем панель */
+  const pan=document.body.classList.contains('pan'),mob=W<700,aw=W-(pan&&!mob?340:0),ah=pan&&mob?H*.48:H;
+  let fx=cx,fy=cy,sc=Math.min(1,aw/(W*.82));
+  if(act){
+    const ps=vis.filter(v=>v.top===actId),xs=ps.map(v=>v.x),ys=ps.map(v=>v.y);
+    const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+    fx=(x0+x1)/2;fy=(y0+y1)/2;sc=Math.max(.65,Math.min(1.5,aw/(x1-x0+260),ah/(y1-y0+160)));
+  }
+  cam.style.transform=`translate(${aw/2}px,${ah/2}px) scale(${sc}) translate(${-fx}px,${-fy}px)`;
+}
+
+function click(it){
+  $('#hint').classList.add('gone');
+  if(it.root){expanded.clear();sel=editing?D.root:null}
+  else{
+    const n=it.n;
+    if(n.children.length){expanded.has(n.id)?collapseDeep(n):expand(n,it.d)}
+    sel=n;
+  }
+  refresh();
+}
+const refresh=()=>{panel();render()};
+
+/* панель: просмотр и правка */
+const fld=(label,...c)=>h('label',{class:'f'},h('span',{},label),...c);
+const inp=(o,k,area)=>{const e=h(area?'textarea':'input',area?{rows:5}:{type:'text'});e.value=o[k]||'';e.addEventListener('input',()=>{o[k]=e.value;save();render()});return e};
+function panel(){
+  const p=$('#pc');p.textContent='';document.body.classList.toggle('pan',!!sel);
+  if(!sel)return;
+  if(sel===D.root){p.append(h('p',{class:'meta'},'Центр карты'),fld('Имя',inp(D.root,'name')),fld('Подпись',inp(D.root,'tagline')));return}
+  const n=sel,has=n.children.length,pr=Math.round(prog(n)),dn=isDone(n);
+  if(!editing){
+    const b=h('b');b.style.width=(dn?100:pr)+'%';
+    p.append(h('p',{class:'meta'},n.date||'',n.group?h('i',{},n.group):''),h('h2',{},n.name),h('div',{class:'bar'},b),h('p',{class:'pct'},dn?'Завершено':pr+'%'));
+    if(n.desc)p.append(h('p',{class:'desc'},n.desc));
+    return;
+  }
+  p.append(h('p',{class:'meta'},'Правка'),fld('Название',inp(n,'name')),fld('Группа',inp(n,'group')),fld('Дата (ГГГГ-ММ)',inp(n,'date')),fld('Описание',inp(n,'desc',1)));
+  if(has)p.append(h('p',{class:'note'},'Прогресс считается по подпунктам: '+pr+'%'));
+  else{
+    const out=h('b',{},n.progress+'%'),r=h('input',{type:'range',min:0,max:100,step:5,value:n.progress});
+    r.addEventListener('input',()=>{n.progress=+r.value;out.textContent=r.value+'%';save();render()});
+    const ck=h('input',{type:'checkbox',checked:n.done});ck.addEventListener('change',()=>{n.done=ck.checked;save();render()});
+    p.append(fld('Прогресс',r,out),h('label',{class:'chk'},ck,'Завершено'));
+  }
+  p.append(h('div',{class:'row'},h('button',{class:'btn',onclick:()=>addChild(n)},'+ Подпункт'),h('button',{class:'btn danger',onclick:()=>del(n)},'Удалить')));
+}
+function addChild(par){
+  const n=norm({name:'Новое достижение',date:new Date().toISOString().slice(0,7),group:'',desc:''});
+  par.children.push(n);expand(par,D.tree.includes(par)?1:2);sel=n;save();refresh();
+  setTimeout(()=>{const i=$('#pc input');i&&i.select()},60);
+}
+function del(n){
+  if(!confirm('Удалить «'+n.name+'» вместе с подпунктами?'))return;
+  const par=remove(n);collapseDeep(n);sel=par||null;save();refresh();
+}
+
+/* управление */
+$('#px').onclick=()=>{sel=null;refresh()};
+svg.addEventListener('click',e=>{if(!e.target.closest('.node')){expanded.clear();sel=null;refresh()}});
+addEventListener('keydown',e=>{
+  if(e.key!=='Escape')return;
+  const a=document.activeElement;if(a&&/INPUT|TEXTAREA/.test(a.tagName)){a.blur();return}
+  sel?(sel=null):expanded.clear();refresh();
+});
+if(canEdit){
+  $('#tools').hidden=false;
+  $('#tg').onclick=()=>{editing=!editing;$('#tg').textContent=editing?'Готово':'Править';$('#tg').classList.toggle('on',editing);$('#ed').hidden=!editing;if(!editing&&sel===D.root)sel=null;refresh()};
+  $('#addc').onclick=()=>{const n=norm({name:'Новая категория',date:new Date().toISOString().slice(0,7),group:'',desc:''});D.tree.push(n);sel=n;save();refresh();setTimeout(()=>{const i=$('#pc input');i&&i.select()},60)};
+  const flash=(b,t)=>{const o=b.textContent;b.textContent=t;setTimeout(()=>b.textContent=o,1500)};
+  $('#bcopy').onclick=async e=>{const b=e.currentTarget,txt='const DATA = '+ser()+';';
+    try{await navigator.clipboard.writeText(txt)}catch(_){const t=h('textarea');t.value=txt;document.body.append(t);t.select();document.execCommand('copy');t.remove()}
+    flash(b,'Скопировано')};
+  $('#bdl').onclick=()=>{const a=h('a',{href:URL.createObjectURL(new Blob([JSON.stringify({...JSON.parse(ser()),log:LOG},null,2)],{type:'application/json'})),download:'achievements.json'});a.click()};
+  $('#bup').onclick=()=>$('#fi').click();
+  $('#fi').onchange=async e=>{const f=e.target.files[0];if(!f)return;
+    try{const t=await f.text(),s=JSON.parse(t);if(!s.root||!Array.isArray(s.tree))throw 0;localStorage.setItem(KEY,JSON.stringify({root:s.root,tree:s.tree}));if(Array.isArray(s.log))localStorage.setItem(LK,JSON.stringify(s.log));location.reload()}
+    catch(_){alert('Файл не похож на данные дерева: нужны поля root и tree.')}};
+  $('#brst').onclick=()=>{if(confirm('Сбросить правки и вернуть данные из файла?')){localStorage.removeItem(KEY);location.reload()}};
+}
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>render(false),200)});
+/* ===== ДАШБОРД: рекомендации, журнал занятий, статистика (виден только владельцу) ===== */
+const LK='achv-log-v1';let LOG=[];
+if(canEdit)try{LOG=JSON.parse(localStorage.getItem(LK))||[]}catch(e){}
+const saveLog=()=>{try{localStorage.setItem(LK,JSON.stringify(LOG))}catch(e){}};
+/* глагол в рекомендациях по названию категории — меняйте под свои */
+const VERB={'Книги':'Почитать','Спорт':'Потренироваться','Языки':'Позаниматься','Технические проекты':'Поработать над проектом'};
+const fmt=m=>m>=60?Math.floor(m/60)+' ч'+(m%60?' '+m%60+' м':''):m+' м';
+const WD=['вс','пн','вт','ср','чт','пт','сб'];
+const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const addDays=(d,k)=>{const x=new Date(d);x.setDate(x.getDate()+k);return x};
+const toast=m=>{const t=h('div',{class:'toast'},m);document.body.append(t);setTimeout(()=>t.remove(),1800)};
+function lsum(){const t=D.tree.length?Math.round(D.tree.reduce((a,x)=>a+prog(x),0)/D.tree.length):0;$('#ls').textContent=t+'% общий прогресс'}
+function leaves(){const out=[];const walk=(n,cat,path)=>{if(!n.children.length){out.push({n,cat,path});return}n.children.forEach(c=>walk(c,cat,path+' › '+c.name))};D.tree.forEach(t=>walk(t,t.name,t.name));return out}
+function recs(LV){
+  const last={};LOG.forEach(l=>{if(!last[l.name]||l.d>last[l.name])last[l.name]=l.d});
+  const t0=new Date(ymd(new Date()));
+  return LV.filter(l=>!l.n.done&&l.n.progress<100).map(l=>{
+    const ld=last[l.n.name],days=ld?Math.round((t0-new Date(ld))/864e5):null;
+    return{...l,days,sc:(days==null?20:Math.min(days,30))+(l.n.progress>0?12:0)-l.n.progress*.05};
+  }).sort((a,b)=>b.sc-a.sc).slice(0,3);
+}
+let fSel=0;
+function dash(){
+  const root=$('#dash');if(!canEdit){root.hidden=true;return}
+  root.hidden=false;root.textContent='';
+  const now=new Date(),LV=leaves(),S=a=>a.reduce((s,x)=>s+x,0);
+  if(fSel>=LV.length)fSel=0;
+  root.append(h('h1',{},'Привет, '+D.root.name),h('p',{class:'date'},now.toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'})));
+  /* виджет: чем заняться */
+  const rc=recs(LV),recCard=h('div',{class:'card'},h('h3',{},'ЧЕМ ЗАНЯТЬСЯ'));
+  if(rc.length)rc.forEach(r=>recCard.append(h('div',{class:'rec'},
+    h('div',{},h('b',{},(VERB[r.cat]||'Продолжить')+': '+r.n.name),h('span',{},r.cat+' · '+Math.round(r.n.progress)+'%'+(r.days==null?' · ещё не начато':r.days===0?' · сегодня уже занимался':' · '+r.days+' дн. назад'))),
+    h('button',{class:'btn',onclick:()=>{fSel=LV.findIndex(l=>l.n===r.n);dash();setTimeout(()=>$('#logc').scrollIntoView({behavior:'smooth',block:'center'}),30)}},'Записать'))));
+  else recCard.append(h('p',{class:'note'},'Всё завершено или пунктов пока нет. Добавьте новые в дереве.'));
+  /* виджет: записать занятие */
+  const sl=h('select',{});LV.forEach((l,i)=>sl.append(h('option',{value:i,selected:i===fSel},l.path)));
+  const mn=h('input',{type:'number',min:1,max:600,inputMode:'numeric',value:30}),dt=h('input',{type:'date',value:ymd(now)});
+  const pv=h('b',{}),rg=h('input',{type:'range',min:0,max:100,step:5});
+  const sync=()=>{const l=LV[sl.value];if(!l)return;rg.value=l.n.done?100:l.n.progress;pv.textContent=rg.value+'%'};
+  sl.onchange=()=>{fSel=+sl.value;sync()};rg.oninput=()=>pv.textContent=rg.value+'%';sync();
+  const go=h('button',{class:'btn on',onclick:()=>{
+    const l=LV[sl.value],m=+mn.value;if(!l||!(m>0))return;
+    const np=+rg.value,dp=Math.max(0,np-(l.n.done?100:l.n.progress));
+    LOG.push({d:dt.value||ymd(now),name:l.n.name,cat:l.cat,m,dp});
+    l.n.progress=np;l.n.done=np>=100;save();saveLog();dash();refresh();toast('Записано: '+fmt(m));
+  }},'Записать занятие');
+  const logCard=h('div',{class:'card',id:'logc'},h('h3',{},'ЧТО Я СДЕЛАЛ'),
+    h('label',{class:'f'},h('span',{},'Пункт'),sl),
+    h('label',{class:'f'},h('span',{},'Сколько минут'),mn),
+    h('div',{class:'chips'},[15,30,45,60].map(v=>h('button',{class:'btn',onclick:()=>{mn.value=v}},v+' м'))),
+    h('label',{class:'f'},h('span',{},'Дата'),dt),
+    h('label',{class:'f'},h('span',{},'Прогресс после занятия: ',pv),rg),go);
+  root.append(h('div',{class:'grid'},recCard,logCard));
+  /* статистика */
+  if(!LOG.length){root.append(h('div',{class:'card'},h('h3',{},'СТАТИСТИКА'),h('p',{class:'desc'},'Графики появятся после первой записи занятия.')));return}
+  const byDay={};LOG.forEach(l=>byDay[l.d]=(byDay[l.d]||0)+l.m);
+  const lastN=k=>{const a=[];for(let i=k-1;i>=0;i--)a.push(ymd(addDays(now,-i)));return a};
+  const sumD=a=>S(a.map(d=>byDay[d]||0)),w14=lastN(14),w7=w14.slice(7),wk=sumD(w7),pw=sumD(w14.slice(0,7));
+  let st=0,i0=byDay[ymd(now)]?0:1;while(byDay[ymd(addDays(now,-i0))]){st++;i0++}
+  const l30=LOG.filter(l=>l.d>=ymd(addDays(now,-29))),m30=S(l30.map(l=>l.m)),dp30=S(l30.map(l=>l.dp||0)),eff=m30?Math.round(dp30/(m30/60)):0;
+  const kp=(v,t)=>h('div',{},h('b',{},v),h('span',{},t));
+  const kCard=h('div',{class:'card'},h('h3',{},'ПОКАЗАТЕЛИ'),h('div',{class:'kpis'},kp(fmt(wk),'за 7 дней'+(pw?(wk>=pw?' · +':' · −')+fmt(Math.abs(wk-pw)):'')),kp(String(st),'дн. подряд'),kp('+'+eff+'%','прогресса за час (КПД, 30 дн.)')));
+  const mon=new Date(now);mon.setDate(mon.getDate()-((mon.getDay()+6)%7)-84);
+  const heat=h('div',{class:'heat'});
+  for(let i=0;i<91;i++){const d=addDays(mon,i),k=ymd(d),m=byDay[k]||0,c=h('i',{title:k+': '+fmt(m)});
+    if(d>now)c.style.visibility='hidden';
+    else if(m){const a=m<=20?.22:m<=45?.45:m<=90?.7:1;c.style.background=`linear-gradient(rgba(59,91,219,${a}),rgba(59,91,219,${a})),#E6E9ED`}
+    heat.append(c)}
+  const mx7=Math.max(1,...w7.map(d=>byDay[d]||0));
+  const cols=h('div',{class:'cols'},w7.map(d=>{const m=byDay[d]||0,b=h('i');b.style.height=Math.max(2,Math.round(m/mx7*80))+'px';
+    return h('div',{},h('span',{},m?String(m):''),b,h('span',{},WD[new Date(d).getUTCDay()]))}));
+  const cats={};l30.forEach(l=>{const c=cats[l.cat]||(cats[l.cat]={m:0,dp:0});c.m+=l.m;c.dp+=l.dp||0});
+  const cl=Object.entries(cats);
+  const rows=(items,val)=>{const mx=Math.max(1,...items.map(x=>x.v));return items.map(x=>{const b=h('i');b.style.width=(x.v/mx*100)+'%';return h('div',{class:'hrow'},h('span',{},x.k),h('div',{class:'trk'},b),h('em',{},val(x.v)))})};
+  const tCard=h('div',{class:'card'},h('h3',{},'ВРЕМЯ ПО КАТЕГОРИЯМ · 30 ДНЕЙ'),rows(cl.map(([k,c])=>({k,v:c.m})).sort((a,b)=>b.v-a.v),fmt));
+  const eCard=h('div',{class:'card'},h('h3',{},'КПД ПО КАТЕГОРИЯМ · % ПРОГРЕССА В ЧАС'),rows(cl.map(([k,c])=>({k,v:Math.round(c.dp/(c.m/60))})).sort((a,b)=>b.v-a.v),v=>'+'+v+'%'),h('p',{class:'note'},'КПД = на сколько процентов продвинулись пункты за час занятий.'));
+  const lg=h('div',{class:'card'},h('h3',{},'ПОСЛЕДНИЕ ЗАПИСИ'),LOG.slice(-5).reverse().map(l=>h('div',{class:'lg'},h('div',{},l.name,h('br'),h('span',{},l.d+' · '+fmt(l.m)+(l.dp?' · +'+l.dp+'%':''))),h('button',{'aria-label':'Удалить запись',onclick:()=>{LOG.splice(LOG.indexOf(l),1);saveLog();dash()}},'×'))));
+  root.append(kCard,h('div',{class:'grid'},h('div',{class:'card'},h('h3',{},'АКТИВНОСТЬ · 13 НЕДЕЛЬ'),heat),h('div',{class:'card'},h('h3',{},'МИНУТЫ ПО ДНЯМ'),cols),tCard,eCard,lg));
+}
+/* кнопка-иконка: из неё «вылетают» шарики дерева */
+function toggleTree(open,scroll=true){
+  const on=open===undefined?box.style.display!=='block':open;
+  if(on){box.style.display='block';render();if(scroll)setTimeout(()=>box.scrollIntoView({behavior:'smooth',block:'start'}),60)}
+  else{expanded.clear();sel=null;panel();els.clear();E.innerHTML=N.innerHTML='';box.style.display='none'}
+  $('#lb').setAttribute('aria-expanded',on);
+}
+$('#lb').onclick=()=>toggleTree();
+lsum();dash();
+if(!canEdit)toggleTree(true,false);
+})();
+</script>
+</body>
+</html>
