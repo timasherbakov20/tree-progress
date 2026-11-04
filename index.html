@@ -140,6 +140,23 @@ summary::-webkit-details-marker{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:.01s!important}.edge.fresh{stroke-dashoffset:0}}
 
+/* ===== календарь ===== */
+.calh{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.calh h3{margin:0}
+.caln{display:flex;align-items:center;gap:6px}
+.caln b{font:500 14px var(--sans);min-width:116px;text-align:center;text-transform:capitalize}
+.calg{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.calg .wd{font:11px var(--mono);color:var(--muted);text-align:center;padding:2px 0 4px}
+.cd{height:44px;border:1px solid transparent;border-radius:8px;background:var(--track);color:var(--ink);font:12px var(--mono);cursor:pointer;padding:0;display:grid;place-items:center}
+.cd:hover{border-color:var(--btnb)}
+.cd.today{border-color:var(--accent)}
+.cd.sel{outline:2px solid var(--ink);outline-offset:1px}
+.cd.off{background:transparent;cursor:default;pointer-events:none}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:16px 0 0;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+.dayd{margin-top:14px;padding-top:12px;border-top:1px solid var(--edge)}
+.dayd b{font-weight:500;font-size:14px;display:block;margin-bottom:6px}
+.dayd .note{margin:6px 0 0}
 /* ===== тёмная тема по умолчанию, оформление ===== */
 body{font-feature-settings:"tnum" 1}
 .card{box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 12px 30px -20px rgba(0,0,0,.6)}
@@ -305,16 +322,44 @@ function render(anim=true){
     const a=-Math.PI/2+i*2*Math.PI/n+(i%2?.12:-.08),q=i%2?1:.88,x=cx+rx*Math.cos(a)*q,y=cy+ry*Math.sin(a)*q;
     const it={n:t,id:t.id,x,y,out:Math.atan2(y-cy,x-cx),d:1,p:root,k:i,top:t.id,ci:i};vis.push(it);place(it);
   });
-  /* разводим пересекающиеся точки */
-  const gap=W<700?68:58;
-  for(let k=0;k<40;k++){
+  /* разводим точки И подписи: считаем прямоугольник «точка + подпись» и раздвигаем пересекающиеся */
+  const ML=W<700?17:28;
+  const FS=v=>v.root?24:v.d===1?15:13,RR=v=>(v.root?7:[0,5,3.5,3,3][Math.min(v.d,4)])+5;
+  const lblLen=v=>{const n=v.n,nm=n.name||'Без названия';let len=Math.min(nm.length,ML);
+    if(!v.root){const kk=n.children.length;if(kk&&!expanded.has(n.id))len+=String(kk).length+1;if(v.d===1){const tm=minsOfCat(n.name);if(tm)len+=fmt(tm).length+3}}
+    return len};
+  vis.forEach(v=>v.ll=lblLen(v));
+  const bx=v=>{
+    const fs=FS(v),rr=RR(v),ang=v.root?Math.PI/2:v.out,c=Math.cos(ang),sn=Math.sin(ang),mid=Math.abs(c)<.35,off=v.root?30:rr+8;
+    const w=v.ll*fs*.56+6,lx=v.x+c*off,by=v.y+sn*off+(mid?(sn>0?fs:-4):fs*.32);
+    const x0=c>.35?lx:c<-.35?lx-w:lx-w/2,y0=by-fs*.95;let y1=by+fs*.3;if(v.root)y1+=44;
+    return[Math.min(x0,v.x-rr)-3,Math.min(y0,v.y-rr)-2,Math.max(x0+w,v.x+rr)+3,Math.max(y1,v.y+rr)+2];
+  };
+  for(let k=0;k<200;k++){
+    vis.forEach(v=>{if(v.p)v.out=Math.atan2(v.y-v.p.y,v.x-v.p.x)});
+    let moved=false;
     for(let i=0;i<vis.length;i++)for(let j=i+1;j<vis.length;j++){
-      const a=vis[i],b=vis[j];let dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);
-      if(d>=gap)continue;if(d<.01){dx=1;dy=.3;d=Math.hypot(dx,dy)}
-      const ux=dx/d,uy=dy/d,f=gap-d,ma=a.root?0:b.root?1:.5,mb=a.root?1:b.root?0:.5;
-      a.x-=ux*f*ma;a.y-=uy*f*ma;b.x+=ux*f*mb;b.y+=uy*f*mb;
+      const a=vis[i],b=vis[j],A=bx(a),B=bx(b);
+      const ox=Math.min(A[2],B[2])-Math.max(A[0],B[0]),oy=Math.min(A[3],B[3])-Math.max(A[1],B[1]);
+      if(ox<=0||oy<=0)continue;moved=true;
+      const ma=a.root?0:b.root?1:.5,mb=a.root?1:b.root?0:.5;
+      if(ox<oy){const sg=b.x>=a.x?1:-1,f=ox+3;a.x-=sg*f*ma;b.x+=sg*f*mb}
+      else{const sg=b.y>=a.y?1:-1,f=oy+3;a.y-=sg*f*ma;b.y+=sg*f*mb}
     }
-    vis.forEach(v=>{if(!v.root){v.x=Math.min(W-44,Math.max(44,v.x));v.y=Math.min(H-36,Math.max(36,v.y))}});
+    vis.forEach(v=>{if(v.root)return;const q=bx(v);let sx=0,sy=0;
+      if(q[0]<8)sx=8-q[0];else if(q[2]>W-8)sx=W-8-q[2];
+      if(q[1]<8)sy=8-q[1];else if(q[3]>H-8)sy=H-8-q[3];
+      v.x+=sx;v.y+=sy});
+    if(!moved)break;
+  }
+  /* добивка: оставшиеся пересечения сдвигаем вниз по очереди */
+  for(let k=0;k<12;k++){
+    vis.forEach(v=>{if(v.p)v.out=Math.atan2(v.y-v.p.y,v.x-v.p.x)});let m2=false;
+    const arr=vis.slice().sort((a,b)=>a.y-b.y);
+    arr.forEach((b,i)=>{if(b.root)return;for(let j=0;j<i;j++){const A=bx(arr[j]),B=bx(b);
+      const ox=Math.min(A[2],B[2])-Math.max(A[0],B[0]),oy=Math.min(A[3],B[3])-Math.max(A[1],B[1]);
+      if(ox>0&&oy>0){b.y=Math.min(H-30,b.y+oy+2);m2=true}}});
+    if(!m2)break;
   }
   vis.forEach(v=>{if(v.p)v.out=Math.atan2(v.y-v.p.y,v.x-v.p.x)});
   const act=D.tree.find(t=>expanded.has(t.id));const actId=act?act.id:null;
@@ -339,7 +384,7 @@ function render(anim=true){
     const ang=it.root?Math.PI/2:it.out,c=Math.cos(ang),s=Math.sin(ang),mid=Math.abs(c)<.35,fs=it.root?24:it.d===1?15:13,off=it.root?30:rr+8;
     o.txt.setAttribute('x',c*off);o.txt.setAttribute('y',s*off+(mid?(s>0?fs:-4):fs*.32));
     o.txt.setAttribute('text-anchor',c>.35?'start':c<-.35?'end':'middle');
-    const nm=n.name||'Без названия';o.txt.textContent=W<700&&nm.length>17?nm.slice(0,16)+'…':nm;
+    const nm=n.name||'Без названия';o.txt.textContent=nm.length>ML?nm.slice(0,ML-1)+'…':nm;
     if(kids&&!exp){el('tspan',{class:'cnt',dx:6},o.txt).textContent=kids}
     if(it.d===1){const tm=minsOfCat(n.name);if(tm)el('tspan',{class:'cnt',dx:6},o.txt).textContent='· '+fmt(tm)}
     if(it.root){if(!o.sub)o.sub=el('text',{class:'sub',transform:'translate(0 66)'},o.nb);o.sub.textContent=D.root.tagline||''}
@@ -352,9 +397,9 @@ function render(anim=true){
   const pan=document.body.classList.contains('pan'),mob=W<700,aw=W-(pan&&!mob?340:0),ah=pan&&mob?H*.48:H;
   let fx=cx,fy=cy,sc=Math.min(1,aw/(W*.82));
   if(act){
-    const ps=vis.filter(v=>v.top===actId),xs=ps.map(v=>v.x),ys=ps.map(v=>v.y);
-    const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
-    fx=(x0+x1)/2;fy=(y0+y1)/2;sc=Math.max(.65,Math.min(1.5,aw/(x1-x0+260),ah/(y1-y0+160)));
+    const bs=vis.filter(v=>v.top===actId).map(bx);
+    const x0=Math.min(...bs.map(q=>q[0])),x1=Math.max(...bs.map(q=>q[2])),y0=Math.min(...bs.map(q=>q[1])),y1=Math.max(...bs.map(q=>q[3]));
+    fx=(x0+x1)/2;fy=(y0+y1)/2;sc=Math.max(.6,Math.min(1.5,aw/(x1-x0+50),ah/(y1-y0+50)));
   }
   cam.style.transform=`translate(${aw/2}px,${ah/2}px) scale(${sc}) translate(${-fx}px,${-fy}px)`;
 }
@@ -471,6 +516,39 @@ function goalRing(m){
   const b=h('button',{class:'goal',title:'Цель дня. Нажмите, чтобы изменить',onclick:()=>{const v=parseInt(prompt('Цель на день, минут:',GOAL),10);if(v>0){GOAL=v;try{localStorage.setItem(GK,v)}catch(e){}touch();dash()}}});
   b.append(sv,h('span',{},fmt(m)+' из '+fmt(GOAL)));return b;
 }
+/* ===== календарь: дни окрашены цветом сферы, яркость — по времени ===== */
+let calY=new Date().getFullYear(),calM=new Date().getMonth(),calSel=null;
+const MONTHS=['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+const MGEN=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+const hexRgb=c=>[1,3,5].map(i=>parseInt(c.slice(i,i+2),16)).join(',');
+function calCard(){
+  const td=ymd(new Date()),first=new Date(calY,calM,1),dim=new Date(calY,calM+1,0).getDate(),lead=(first.getDay()+6)%7,pre=calY+'-'+String(calM+1).padStart(2,'0');
+  const byD={};LOG.forEach(l=>{const o=byD[l.d]||(byD[l.d]={m:0,c:{},items:[]});o.m+=l.m;o.c[l.cat]=(o.c[l.cat]||0)+l.m;o.items.push(l)});
+  const sel=calSel||td,card=h('div',{class:'card',id:'calc'});
+  const redraw=()=>card.replaceWith(calCard());
+  const nav=k=>{const d=new Date(calY,calM+k,1);calY=d.getFullYear();calM=d.getMonth();redraw()};
+  const mk=Object.keys(byD).filter(k=>k.startsWith(pre)),mm=mk.reduce((s,k)=>s+byD[k].m,0);
+  card.append(h('div',{class:'calh'},h('h3',{},'Календарь'),h('div',{class:'caln'},
+    h('button',{class:'btn','aria-label':'Прошлый месяц',onclick:()=>nav(-1)},'‹'),h('b',{},MONTHS[calM]+' '+calY),h('button',{class:'btn','aria-label':'Следующий месяц',onclick:()=>nav(1)},'›'),
+    h('button',{class:'btn',onclick:()=>{const n=new Date();calY=n.getFullYear();calM=n.getMonth();calSel=td;redraw()}},'Сегодня'))));
+  const g=h('div',{class:'calg'},['пн','вт','ср','чт','пт','сб','вс'].map(x=>h('div',{class:'wd'},x)));
+  for(let i=0;i<lead;i++)g.append(h('div',{class:'cd off'}));
+  for(let d=1;d<=dim;d++){
+    const k=pre+'-'+String(d).padStart(2,'0'),o=byD[k],b=h('button',{class:'cd','aria-label':k},String(d));
+    if(o){
+      const top=Object.entries(o.c).sort((a,c)=>c[1]-a[1])[0][0],col=COL[Math.max(0,D.tree.findIndex(t=>t.name===top))%COL.length],a=o.m<=20?.3:o.m<=45?.55:o.m<=90?.8:1;
+      b.style.background=`rgba(${hexRgb(col)},${a})`;b.style.color=a>=.8?'#0D1015':'var(--ink)';b.title=fmt(o.m);
+    }
+    if(k===td)b.classList.add('today');if(k===sel)b.classList.add('sel');
+    b.onclick=()=>{calSel=k;redraw()};g.append(b);
+  }
+  card.append(g);
+  const so=byD[sel],dd=h('div',{class:'dayd'},h('b',{},+sel.slice(8,10)+' '+MGEN[+sel.slice(5,7)-1]+(so?' · '+fmt(so.m):'')));
+  if(so)so.items.forEach(l=>dd.append(h('div',{class:'lg'},h('div',{},l.name,h('br'),h('span',{},l.cat+' · '+fmt(l.m)+(l.dp?' · +'+l.dp+'%':''))),h('button',{'aria-label':'Удалить запись',onclick:()=>{LOG.splice(LOG.indexOf(l),1);saveLog();dash()}},'×'))));
+  else dd.append(h('p',{class:'note'},'В этот день занятий нет.'));
+  card.append(dd,h('div',{class:'legend'},D.tree.map((t,i)=>h('span',{},h('i',{style:'background:'+COL[i%COL.length]}),t.name)),h('span',{},'Чем ярче день, тем больше времени'+(mk.length?' · в этом месяце '+fmt(mm)+', дней '+mk.length:''))));
+  return card;
+}
 function dash(){
   const root=$('#dash');if(!canEdit){root.hidden=true;return}
   clearInterval(tint);root.hidden=false;root.textContent='';
@@ -508,7 +586,7 @@ function dash(){
     h('div',{class:'chips'},[15,30,45,60].map(v=>h('button',{class:'btn',onclick:()=>{mn.value=v}},v+' м'))),
     h('label',{class:'f'},h('span',{},'Дата'),dt),
     h('label',{class:'f'},h('span',{},'Прогресс после занятия: ',pv),rg),go);
-  root.append(h('div',{class:'grid'},recCard,logCard));
+  root.append(h('div',{class:'grid'},recCard,logCard),calCard());
   if(!LOG.length){root.append(h('div',{class:'card'},h('h3',{},'Статистика'),h('p',{class:'desc'},'Графики появятся после первой записи занятия.')),syncCard());return}
   /* статистика */
   const seg=h('div',{class:'seg'},[['7','7 дн.'],['30','30 дн.'],['all','Всё']].map(([v,t])=>h('button',{class:per===v?'on':'',onclick:()=>{per=v;dash()}},t)));
