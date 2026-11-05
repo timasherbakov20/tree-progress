@@ -140,6 +140,37 @@ summary::-webkit-details-marker{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:.01s!important}.edge.fresh{stroke-dashoffset:0}}
 
+
+/* ===== план, цели, награды, идеи ===== */
+.pday{margin:14px 0 6px;font:12px var(--mono);color:var(--muted)}
+.pl{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--edge)}
+.pl>div{flex:1;min-width:0}
+.pl b{display:block;font-weight:500;font-size:14px;line-height:1.3}
+.pl span{font-size:12px;color:var(--muted)}
+.pc{width:20px;height:20px;border:2px solid var(--accent);border-radius:50%;display:grid;place-items:center;font:11px var(--mono);font-style:normal;flex:none}
+.pl.done .pc{background:var(--accent);color:var(--bg)}
+.pl.done b{text-decoration:line-through;color:var(--muted)}
+.x{background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 6px}
+.padd{margin-top:14px;padding-top:14px;border-top:1px solid var(--edge)}
+.gl{margin:0 0 14px}
+.glh{display:flex;justify-content:space-between;gap:8px;font-size:14px;margin:0 0 6px}
+.gb{background:none;border:0;color:var(--muted);font:12px var(--mono);cursor:pointer;padding:0}
+.gb:hover{color:var(--accent)}
+.bl{margin:16px 0 8px;font-size:13px;color:var(--muted)}
+.bds{display:flex;gap:10px;flex-wrap:wrap}
+.bd{width:62px;text-align:center;font-size:11px;color:var(--muted);line-height:1.2}
+.bd b{display:grid;place-items:center;width:52px;height:52px;margin:0 auto 4px;border:2px dashed var(--btnb);border-radius:50%;font:500 17px var(--mono);color:var(--muted);opacity:.55}
+.bd.on b{border-style:solid;border-color:var(--accent);color:var(--accent);opacity:1;box-shadow:0 0 0 4px rgba(var(--acc-rgb),.1)}
+.bd.sm{width:46px}
+.bd.sm b{width:38px;height:38px;font-size:12px}
+.bh{margin:0 0 12px}
+.bhn{font-size:13px;margin:0 0 6px}
+.bhn i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+.bhn span{color:var(--muted);font-size:12px}
+.idea{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 0;border-top:1px solid var(--edge)}
+.calh+.idea{border-top:0;padding-top:0}
+.idea b{display:block;font-weight:500;font-size:15px;line-height:1.3}
+.idea span{font-size:12px;color:var(--muted);line-height:1.4}
 /* ===== календарь ===== */
 .calh{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}
 .calh h3{margin:0}
@@ -487,14 +518,23 @@ const addDays=(d,k)=>{const x=new Date(d);x.setDate(x.getDate()+k);return x};
 const toast=m=>{const t=h('div',{class:'toast'},m);document.body.append(t);setTimeout(()=>t.remove(),1800)};
 function lsum(){const t=D.tree.length?Math.round(D.tree.reduce((a,x)=>a+prog(x),0)/D.tree.length):0;$('#ls').textContent=t+'% общий прогресс'}
 function leaves(){const out=[];const walk=(n,cat,path)=>{if(!n.children.length){out.push({n,cat,path});return}n.children.forEach(c=>walk(c,cat,path+' › '+c.name))};D.tree.forEach(t=>walk(t,t.name,t.name));return out}
-function recs(LV){
+function ranked(LV){
   const last={};LOG.forEach(l=>{if(!last[l.name]||l.d>last[l.name])last[l.name]=l.d});
   const t0=new Date(ymd(new Date()));
   return LV.filter(l=>!l.n.done&&l.n.progress<100).map(l=>{
     const ld=last[l.n.name],days=ld?Math.round((t0-new Date(ld))/864e5):null;
     return{...l,days,sc:(days==null?20:Math.min(days,30))+(l.n.progress>0?12:0)-l.n.progress*.05};
-  }).sort((a,b)=>b.sc-a.sc).slice(0,3);
+  }).sort((a,b)=>b.sc-a.sc);
 }
+/* сначала до двух последних занятий («повторить»), затем пункты, к которым давно не возвращался */
+function recs(LV){
+  const all=ranked(LV),by=new Map(all.map(x=>[x.n.name,x])),seen=new Set(),out=[];
+  const srt=[...LOG].sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  for(let i=srt.length-1;i>=0&&out.length<2;i--){const l=srt[i],x=by.get(l.name);if(!x||seen.has(l.name))continue;seen.add(l.name);out.push({...x,recent:l})}
+  all.forEach(x=>{if(out.length<4&&!seen.has(x.n.name)){seen.add(x.n.name);out.push(x)}});
+  return out;
+}
+let fMin=0;
 let fSel=0,per='30',tint=null,GOAL=60;
 const GK='achv-goal';try{GOAL=+localStorage.getItem(GK)||60}catch(e){}
 const minsOfCat=name=>LOG.reduce((s,l)=>l.cat===name?s+l.m:s,0);
@@ -515,6 +555,138 @@ function goalRing(m){
   el('text',{x:38,y:43,'text-anchor':'middle',class:'rt'},sv).textContent=Math.round(p*100)+'%';
   const b=h('button',{class:'goal',title:'Цель дня. Нажмите, чтобы изменить',onclick:()=>{const v=parseInt(prompt('Цель на день, минут:',GOAL),10);if(v>0){GOAL=v;try{localStorage.setItem(GK,v)}catch(e){}touch();dash()}}});
   b.append(sv,h('span',{},fmt(m)+' из '+fmt(GOAL)));return b;
+}
+/* ===== недельные цели, план, награды, идеи ===== */
+const PK='achv-plan',GLK='achv-goals',PW='achv-planweek';
+let PLAN=[],GOALS={};
+try{PLAN=JSON.parse(localStorage.getItem(PK))||[];GOALS=JSON.parse(localStorage.getItem(GLK))||{}}catch(e){}
+const savePlan=()=>{try{localStorage.setItem(PK,JSON.stringify(PLAN))}catch(e){}touch()};
+const saveGoals=()=>{try{localStorage.setItem(GLK,JSON.stringify(GOALS))}catch(e){}touch()};
+const goalOf=c=>GOALS[c]>0?GOALS[c]:120;   /* цель по умолчанию — 2 часа в неделю */
+const pd=k=>new Date(k+'T00:00:00');
+const weekOf=k=>{const d=pd(k);d.setDate(d.getDate()-((d.getDay()+6)%7));return ymd(d)};
+const weekMins=(cat,wk)=>LOG.reduce((s,l)=>l.cat===cat&&weekOf(l.d)===wk?s+l.m:s,0);
+const colOf=c=>COL[Math.max(0,D.tree.findIndex(t=>t.name===c))%COL.length];
+const DN=['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
+const dayLabel=k=>k===ymd(new Date())?'Сегодня':k===ymd(addDays(new Date(),1))?'Завтра':DN[pd(k).getDay()]+', '+(+k.slice(8))+' '+MGEN[+k.slice(5,7)-1];
+const avgM=name=>{const a=LOG.filter(l=>l.name===name);return a.length?Math.round(a.reduce((s,l)=>s+l.m,0)/a.length/5)*5:0};
+/* план: до воскресенья недели «завтра», по недостающим минутам целей */
+function genPlan(LV){
+  const now=new Date(),td=ymd(now),tm=addDays(now,1),end=ymd(addDays(pd(weekOf(ymd(tm))),6)),days=[];
+  for(let d=tm;ymd(d)<=end;d=addDays(d,1))days.push(ymd(d));
+  PLAN=PLAN.filter(p=>p.d<=td&&p.d>=ymd(addDays(now,-14)));
+  const wk=weekOf(days[0]),rk=ranked(LV),sess=[];
+  D.tree.forEach(t=>{
+    const rem=Math.max(0,goalOf(t.name)-weekMins(t.name,wk)),lf=rk.filter(x=>x.cat===t.name).slice(0,2);
+    if(!rem||!lf.length)return;
+    const n=Math.min(5,Math.ceil(rem/40)),each=Math.min(60,Math.max(15,Math.round(rem/n/5)*5)),list=[];
+    for(let i=0;i<n;i++){const x=lf[i%lf.length],a=avgM(x.n.name);list.push({name:x.n.name,cat:t.name,m:a?Math.min(60,Math.max(15,a)):each})}
+    sess.push(list);
+  });
+  const flat=[];for(let i=0;i<5;i++)sess.forEach(l=>l[i]&&flat.push(l[i]));
+  const use=flat.slice(0,days.length*3);
+  use.forEach((x,i)=>PLAN.push({id:'p'+Date.now().toString(36)+i,d:days[Math.floor(i*days.length/use.length)],...x}));
+  try{localStorage.setItem(PW,wk)}catch(e){}
+}
+function autoPlan(LV){   /* раз в неделю сайт сам предлагает план; REV не трогаем, чтобы не перебить синхронизацию */
+  const wk=weekOf(ymd(addDays(new Date(),1)));let seen='';try{seen=localStorage.getItem(PW)}catch(e){}
+  if(seen===wk||!LV.length)return;
+  genPlan(LV);try{localStorage.setItem(PK,JSON.stringify(PLAN))}catch(e){}
+}
+let planAdd=false;
+function planCard(){
+  const td=ymd(new Date()),card=h('div',{class:'card',id:'planc'}),LV=leaves(),redraw=()=>card.replaceWith(planCard());
+  const items=PLAN.filter(p=>p.d>=td).sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+  card.append(h('div',{class:'calh'},h('h3',{},'План на завтра и неделю'),h('div',{class:'caln'},
+    h('button',{class:'btn',onclick:()=>{genPlan(LV);savePlan();redraw()}},'Предложить заново'),
+    h('button',{class:'btn',onclick:()=>{planAdd=!planAdd;redraw()}},planAdd?'Отмена':'+ Добавить'))));
+  let cur='';
+  items.forEach(p=>{
+    if(p.d!==cur){cur=p.d;card.append(h('p',{class:'pday'},dayLabel(p.d)))}
+    const done=LOG.some(l=>l.d===p.d&&l.name===p.name);
+    card.append(h('div',{class:'pl'+(done?' done':'')},h('i',{class:'pc',style:'border-color:'+colOf(p.cat)},done?'✓':''),h('div',{},h('b',{},p.name),h('span',{},p.cat)),
+      h('button',{class:'btn',title:'Изменить время',onclick:()=>{const v=parseInt(prompt('Минут:',p.m),10);if(v>0){p.m=v;savePlan();redraw()}}},fmt(p.m)),
+      h('button',{class:'x','aria-label':'Убрать из плана',onclick:()=>{PLAN.splice(PLAN.indexOf(p),1);savePlan();redraw()}},'×')));
+  });
+  if(!items.length)card.append(h('p',{class:'note'},'План пуст. Нажмите «Предложить заново» или добавьте пункт вручную.'));
+  else card.append(h('p',{class:'note'},'Пункт отмечается выполненным, когда вы записали по нему занятие в этот день.'));
+  if(planAdd){
+    const sl=h('select',{}),ds=h('select',{}),m=h('input',{type:'number',min:5,max:300,value:30});
+    LV.forEach((l,i)=>sl.append(h('option',{value:i},l.path)));
+    for(let i=0;i<7;i++){const k=ymd(addDays(new Date(),i));ds.append(h('option',{value:k},dayLabel(k)))}
+    card.append(h('div',{class:'padd'},h('label',{class:'f'},h('span',{},'Пункт'),sl),h('label',{class:'f'},h('span',{},'Когда'),ds),h('label',{class:'f'},h('span',{},'Минут'),m),
+      h('button',{class:'btn on',onclick:()=>{const l=LV[sl.value];if(!l||!(+m.value>0))return;PLAN.push({id:'p'+Date.now().toString(36),d:ds.value,name:l.n.name,cat:l.cat,m:+m.value});planAdd=false;savePlan();redraw()}},'Добавить в план')));
+  }
+  return card;
+}
+function goalsCard(){
+  const wk=weekOf(ymd(new Date())),card=h('div',{class:'card',id:'goalc'}),redraw=()=>card.replaceWith(goalsCard());
+  card.append(h('h3',{},'Цели недели по сферам'));
+  D.tree.forEach((t,i)=>{
+    const m=weekMins(t.name,wk),g=goalOf(t.name),b=h('i');b.style.width=Math.min(100,m/g*100)+'%';b.style.background=COL[i%COL.length];
+    card.append(h('div',{class:'gl'},h('div',{class:'glh'},h('span',{},t.name),
+      h('button',{class:'gb',title:'Изменить цель',onclick:()=>{const v=parseInt(prompt('Цель на неделю для «'+t.name+'», минут:',g),10);if(v>0){GOALS[t.name]=v;saveGoals();redraw()}}},(m>=g?'✓ ':'')+fmt(m)+' / '+fmt(g))),h('div',{class:'trk'},b)));
+  });
+  card.append(h('p',{class:'note'},'Неделя идёт с понедельника по воскресенье. Нажмите на время, чтобы изменить цель (по умолчанию 2 ч).'));
+  return card;
+}
+/* награды: серии, часы в сфере, недельные цели */
+const BT=[3,7,30],HT=[10,50,100],WT=[1,5,20];
+const curStreak=()=>{const by={};LOG.forEach(l=>by[l.d]=1);let n=0,i=by[ymd(new Date())]?0:1;while(by[ymd(addDays(new Date(),-i))]){n++;i++}return n};
+function badgeState(){
+  const days=[...new Set(LOG.map(l=>l.d))].sort();let best=0,cur=0,prev=null;
+  days.forEach(k=>{cur=prev&&Math.round((pd(k)-pd(prev))/864e5)===1?cur+1:1;best=Math.max(best,cur);prev=k});
+  const wm={};LOG.forEach(l=>{const w=weekOf(l.d),o=wm[w]||(wm[w]={});o[l.cat]=(o[l.cat]||0)+l.m});
+  let met=0,perfect=false;
+  Object.values(wm).forEach(o=>{let all=D.tree.length>0;D.tree.forEach(t=>{if((o[t.name]||0)>=goalOf(t.name))met++;else all=false});if(all)perfect=true});
+  return{best,met,perfect};
+}
+function earned(){
+  const st=badgeState(),e=new Set();
+  BT.forEach(n=>st.best>=n&&e.add('s'+n));
+  D.tree.forEach(t=>HT.forEach(n=>minsOfCat(t.name)>=n*60&&e.add('h|'+t.name+'|'+n)));
+  WT.forEach(n=>st.met>=n&&e.add('w'+n));st.perfect&&e.add('wp');return e;
+}
+const badgeName=id=>id[0]==='s'?'серия '+id.slice(1)+' дн.':id[0]==='h'?id.split('|')[1]+' · '+id.split('|')[2]+' ч':id==='wp'?'идеальная неделя':id.slice(1)+' недельных целей выполнено';
+function awardsCard(){
+  const st=badgeState(),e=earned(),card=h('div',{class:'card'},h('h3',{},'Награды'));
+  const tile=(top,label,ok,col,sm)=>{const b=h('b',{},top);if(col&&ok){b.style.borderColor=col;b.style.color=col}return h('div',{class:'bd'+(ok?' on':'')+(sm?' sm':'')},b,h('span',{},label))};
+  card.append(h('p',{class:'bl'},'Серия дней: лучшая '+st.best+', сейчас '+curStreak()),h('div',{class:'bds'},BT.map(n=>tile(String(n),'дн.',e.has('s'+n)))));
+  card.append(h('p',{class:'bl'},'Часы по сферам'));
+  D.tree.forEach((t,i)=>{const m=minsOfCat(t.name),nx=HT.find(n=>m<n*60),c=COL[i%COL.length];
+    card.append(h('div',{class:'bh'},h('div',{class:'bhn'},h('i',{style:'background:'+c}),t.name,h('span',{},nx?' · до '+nx+' ч ещё '+fmt(nx*60-m):' · все получены')),h('div',{class:'bds'},HT.map(n=>tile(String(n),'ч',e.has('h|'+t.name+'|'+n),c,true)))))});
+  card.append(h('p',{class:'bl'},'Недельные цели: выполнено '+st.met),h('div',{class:'bds'},WT.map(n=>tile(String(n),'целей',e.has('w'+n))),tile('★','идеальная неделя',st.perfect)));
+  return card;
+}
+/* идеи новых достижений: встроенный набор, меняется каждую неделю */
+const IDEAS={
+ 'Образование':[['Решить 20 олимпиадных задач','По физике или математике, с разбором ошибок'],['Конспект сложной темы на одном листе','Определения, формулы и один пример'],['Пробный экзамен под таймер','Реальное время и без подсказок'],['Объяснить тему своими словами','Если можешь объяснить просто, значит понял'],['Пройти тему в открытом курсе','Например, MIT OpenCourseWare или Khan Academy']],
+ 'Технические проекты':[['Собрать схему с новым датчиком','Подключить, откалибровать, вывести данные'],['Мини-проект за выходные','От идеи до работающего прототипа'],['Разобрать старое устройство','Описать, из чего оно состоит и как работает'],['Сделать 3D-модель детали','Эскиз, размеры, проверка сборки'],['Оформить проект в репозитории','Описание, схема и фото результата']],
+ 'Книги':[['Прочитать 30 страниц технической книги','С пометками на полях'],['Записать 5 мыслей из прочитанного','Коротко, своими словами'],['Прочитать биографию инженера или учёного','Что помогло ему дойти до результата'],['Дочитать начатую книгу','Закрыть хотя бы одну из открытых'],['Прочитать научно-популярную статью','По теме будущей специальности']],
+ 'Спорт':[['Три тренировки за неделю','Любой вид активности по плану'],['Побить личный рекорд','В любимом упражнении, с записью результата'],['Пробежать 5 км без остановки','Постепенно, без спешки'],['Сыграть 5 партий в шахматы с разбором','Найти по одной ошибке в каждой'],['10 минут растяжки каждый день','Семь дней подряд']],
+ 'Языки':[['Эссе на английском на 150 слов','Тема по инженерии или науке'],['Лекция на английском без субтитров','С конспектом ключевых мыслей'],['Выучить 30 слов по технической теме','И использовать их в тексте'],['Разговор на английском 15 минут','С другом, преподавателем или в приложении'],['Пробный тест на уровень языка','Записать результат и слабые места']],
+ 'Личностный рост':[['Неделя без бесцельной прокрутки ленты','Считать время в настройках экрана'],['План недели из трёх главных задач','Составить в воскресенье вечером'],['Ложиться вовремя пять дней подряд','Без телефона перед сном'],['Список вузов и требований','Сроки, документы, стоимость'],['Вечерний итог дня в заметках','Три строки: что сделал и что дальше']]};
+const GENERIC=[['Три занятия по 30 минут','Распределить на неделю'],['Закончить давно начатый пункт','Выбрать самый близкий к завершению'],['Разбить большой пункт на подпункты','Три шага, которые можно сделать за неделю'],['Записать итоги недели','Что получилось и что перенести']];
+let ideaShift=0;
+function copyPrompt(){
+  const lines=D.tree.map(t=>'- '+t.name+' ('+fmt(minsOfCat(t.name))+' всего): '+(t.children.map(c=>c.name+' ('+Math.round(prog(c))+'%)').join('; ')||'пока пусто'));
+  const txt='Я школьник, готовлюсь поступать на инженерное направление за границей. Вот мои сферы и достижения:\n'+lines.join('\n')+'\nПредложи 5 новых достижений на ближайшую неделю с короткими описаниями. Учти, где у меня меньше всего занятий, и сделай цели выполнимыми.';
+  (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast('Запрос скопирован. Вставьте его в чат с Claude'),()=>{prompt('Скопируйте запрос:',txt)});
+}
+function ideasCard(){
+  const now=new Date(),td=ymd(now),wkn=Math.floor(pd(weekOf(td))/6048e5)+ideaShift,card=h('div',{class:'card',id:'ideac'}),redraw=()=>card.replaceWith(ideasCard());
+  const have=new Set(),walk=n=>{have.add(n.name);n.children.forEach(walk)};D.tree.forEach(walk);
+  const from=ymd(addDays(now,-13)),act=t=>LOG.reduce((s,l)=>l.cat===t.name&&l.d>=from?s+l.m:s,0);
+  card.append(h('div',{class:'calh'},h('h3',{},'Идеи новых достижений'),h('div',{class:'caln'},h('button',{class:'btn',onclick:()=>{ideaShift++;redraw()}},'Другие'),h('button',{class:'btn',onclick:copyPrompt},'Запрос для Claude'))));
+  [...D.tree].sort((a,b)=>act(a)-act(b)).slice(0,3).forEach((t,i)=>{
+    const bank=IDEAS[t.name]||GENERIC;let pick=null;
+    for(let k=0;k<bank.length;k++){const c=bank[(wkn+i+k)%bank.length];if(!have.has(c[0])){pick=c;break}}
+    if(!pick)return;
+    card.append(h('div',{class:'idea'},h('div',{},h('b',{},pick[0]),h('span',{},t.name+' · '+pick[1])),
+      h('button',{class:'btn',onclick:()=>{t.children.push(norm({name:pick[0],date:td.slice(0,7),group:'Идея недели',desc:pick[1]}));save();dash();refresh();toast('Добавлено в «'+t.name+'»')}},'В дерево')));
+  });
+  card.append(h('p',{class:'note'},'Идеи берутся из встроенного набора для сфер, где за две недели меньше всего занятий, и меняются каждую неделю. Для персональных идей нажмите «Запрос для Claude» и вставьте его в чат.'));
+  return card;
 }
 /* ===== календарь: дни окрашены цветом сферы, яркость — по времени ===== */
 let calY=new Date().getFullYear(),calM=new Date().getMonth(),calSel=null;
@@ -554,17 +726,18 @@ function dash(){
   clearInterval(tint);root.hidden=false;root.textContent='';
   const now=new Date(),td=ymd(now),LV=leaves(),S=a=>a.reduce((s,x)=>s+x,0);
   if(fSel>=LV.length)fSel=0;
+  autoPlan(LV);
   const todayMin=LOG.reduce((s,l)=>l.d===td?s+l.m:s,0);
   root.append(h('div',{class:'hd'},h('div',{},h('h1',{},'Привет, '+D.root.name),h('p',{class:'date'},now.toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long'}))),goalRing(todayMin)));
   /* чем заняться */
   const rc=recs(LV),recCard=h('div',{class:'card'},h('h3',{},'Чем заняться'));
   if(rc.length)rc.forEach(r=>recCard.append(h('div',{class:'rec'},
-    h('div',{},h('b',{},(VERB[r.cat]||'Продолжить')+': '+r.n.name),h('span',{},r.cat+' · '+Math.round(r.n.progress)+'%'+(r.days==null?' · ещё не начато':r.days===0?' · сегодня уже занимался':' · '+r.days+' дн. назад'))),
-    h('button',{class:'btn',onclick:()=>{fSel=LV.findIndex(l=>l.n===r.n);dash();setTimeout(()=>$('#logc').scrollIntoView({behavior:'smooth',block:'center'}),30)}},'Записать'))));
+    h('div',{},h('b',{},(r.recent?'Продолжить':(VERB[r.cat]||'Продолжить'))+': '+r.n.name),h('span',{},r.cat+' · '+Math.round(r.n.progress)+'%'+(r.recent?' · как в прошлый раз '+fmt(r.recent.m):'')+(r.days==null?' · ещё не начато':r.days===0?' · сегодня':' · '+r.days+' дн. назад'))),
+    h('button',{class:'btn',onclick:()=>{fSel=LV.findIndex(l=>l.n===r.n);fMin=r.recent?r.recent.m:0;dash();setTimeout(()=>$('#logc').scrollIntoView({behavior:'smooth',block:'center'}),30)}},r.recent?'Повторить':'Записать'))));
   else recCard.append(h('p',{class:'note'},'Всё завершено или пунктов пока нет. Добавьте новые в дереве.'));
   /* что я сделал + таймер */
   const sl=h('select',{});LV.forEach((l,i)=>sl.append(h('option',{value:i,selected:i===fSel},l.path)));
-  const mn=h('input',{type:'number',min:1,max:600,inputMode:'numeric',value:30}),dt=h('input',{type:'date',value:td});
+  const mn=h('input',{type:'number',min:1,max:600,inputMode:'numeric',value:fMin||30}),dt=h('input',{type:'date',value:td});
   const pv=h('b',{}),rg=h('input',{type:'range',min:0,max:100,step:5});
   const sync=()=>{const l=LV[sl.value];if(!l)return;rg.value=l.n.done?100:l.n.progress;pv.textContent=rg.value+'%'};
   sl.onchange=()=>{fSel=+sl.value;sync()};rg.oninput=()=>pv.textContent=rg.value+'%';sync();
@@ -575,9 +748,10 @@ function dash(){
   const go=h('button',{class:'btn on',onclick:()=>{
     const l=LV[sl.value],m=+mn.value;if(!l||!(m>0))return;
     const np=+rg.value,was=l.n.done||l.n.progress>=100,dp=Math.max(0,np-(was?100:l.n.progress));
-    LOG.push({d:dt.value||td,name:l.n.name,cat:l.cat,m,dp});
+    const b0=earned();LOG.push({d:dt.value||td,name:l.n.name,cat:l.cat,m,dp});fMin=0;
     l.n.progress=np;l.n.done=np>=100;save();saveLog();dash();refresh();
-    toast(np>=100&&!was?'Завершено: '+l.n.name:'Записано: '+fmt(m));
+    const nb=[...earned()].filter(x=>!b0.has(x));
+    toast(nb.length?'Новая награда: '+badgeName(nb[0]):np>=100&&!was?'Завершено: '+l.n.name:'Записано: '+fmt(m));
   }},'Записать занятие');
   const logCard=h('div',{class:'card',id:'logc'},h('h3',{},'Что я сделал'),
     h('div',{class:'timer'},tv,tb,tf),
@@ -586,8 +760,8 @@ function dash(){
     h('div',{class:'chips'},[15,30,45,60].map(v=>h('button',{class:'btn',onclick:()=>{mn.value=v}},v+' м'))),
     h('label',{class:'f'},h('span',{},'Дата'),dt),
     h('label',{class:'f'},h('span',{},'Прогресс после занятия: ',pv),rg),go);
-  root.append(h('div',{class:'grid'},recCard,logCard),calCard());
-  if(!LOG.length){root.append(h('div',{class:'card'},h('h3',{},'Статистика'),h('p',{class:'desc'},'Графики появятся после первой записи занятия.')),syncCard());return}
+  root.append(h('div',{class:'grid'},recCard,logCard),h('div',{class:'grid'},planCard(),goalsCard()),calCard());
+  if(!LOG.length){root.append(h('div',{class:'card'},h('h3',{},'Статистика'),h('p',{class:'desc'},'Графики появятся после первой записи занятия.')),h('div',{class:'grid'},awardsCard(),ideasCard()),syncCard());return}
   /* статистика */
   const seg=h('div',{class:'seg'},[['7','7 дн.'],['30','30 дн.'],['all','Всё']].map(([v,t])=>h('button',{class:per===v?'on':'',onclick:()=>{per=v;dash()}},t)));
   root.append(h('div',{class:'sec'},h('h2',{},'Статистика'),seg));
@@ -623,7 +797,7 @@ function dash(){
   const tCard=h('div',{class:'card'},h('h3',{},'Время по сферам · '+plabel),cl.length?[h('p',{class:'tot'},fmt(mp)),stack,rows(cl.map(([k,c])=>({k,v:c.m,c:cc(k)})),fmt)]:empty);
   const eCard=h('div',{class:'card'},h('h3',{},'КПД по сферам · '+plabel),cl.length?[rows(cl.map(([k,c])=>({k,v:Math.round(c.dp/(c.m/60)),c:cc(k)})).sort((a,b)=>b.v-a.v),v=>'+'+v+'%'),h('p',{class:'note'},'КПД: на сколько процентов продвинулись пункты за час занятий.')]:empty);
   const lg=h('div',{class:'card'},h('h3',{},'Последние записи'),LOG.slice(-5).reverse().map(l=>h('div',{class:'lg'},h('div',{},l.name,h('br'),h('span',{},l.d+' · '+fmt(l.m)+(l.dp?' · +'+l.dp+'%':''))),h('button',{'aria-label':'Удалить запись',onclick:()=>{LOG.splice(LOG.indexOf(l),1);saveLog();dash()}},'×'))));
-  root.append(kCard,h('div',{class:'grid'},tCard,eCard,h('div',{class:'card'},h('h3',{},'Активность · 13 недель'),heat),h('div',{class:'card'},h('h3',{},'Минуты по дням'),cols),lg),syncCard());
+  root.append(kCard,h('div',{class:'grid'},tCard,eCard,h('div',{class:'card'},h('h3',{},'Активность · 13 недель'),heat),h('div',{class:'card'},h('h3',{},'Минуты по дням'),cols),lg),h('div',{class:'grid'},awardsCard(),ideasCard()),syncCard());
 }
 /* кнопка-иконка: из неё «вылетают» шарики дерева */
 function toggleTree(open,scroll=true){
@@ -648,7 +822,7 @@ function touch(){
 async function push(){
   if(!cfg)return;pt=null;
   try{
-    const r=await gh('PATCH',JSON.stringify({files:{[GF]:{content:JSON.stringify({rev:REV,...JSON.parse(ser()),log:LOG,goal:GOAL})}}}));
+    const r=await gh('PATCH',JSON.stringify({files:{[GF]:{content:JSON.stringify({rev:REV,...JSON.parse(ser()),log:LOG,goal:GOAL,plan:PLAN,goals:GOALS})}}}));
     if(!r.ok)throw new Error(r.status);
     setMsg('Синхронизировано в '+new Date().toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'}));
   }catch(e){setMsg('Не удалось отправить ('+e.message+'). Проверьте токен, ID и интернет.')}
@@ -660,7 +834,7 @@ async function pull(){
     const f=(await r.json()).files[GF];let rem=null;
     try{rem=f&&JSON.parse(f.content)}catch(e){}
     if(rem&&rem.rev>REV&&rem.root&&Array.isArray(rem.tree)){
-      D={root:rem.root,tree:rem.tree};D.tree.forEach(norm);LOG=Array.isArray(rem.log)?rem.log:[];REV=rem.rev;if(rem.goal>0){GOAL=rem.goal;try{localStorage.setItem(GK,GOAL)}catch(e){}}
+      D={root:rem.root,tree:rem.tree};D.tree.forEach(norm);LOG=Array.isArray(rem.log)?rem.log:[];REV=rem.rev;if(rem.goal>0){GOAL=rem.goal;try{localStorage.setItem(GK,GOAL)}catch(e){}}if(Array.isArray(rem.plan)){PLAN=rem.plan;try{localStorage.setItem(PK,JSON.stringify(PLAN))}catch(e){}}if(rem.goals&&typeof rem.goals==='object'){GOALS=rem.goals;try{localStorage.setItem(GLK,JSON.stringify(GOALS))}catch(e){}}
       try{localStorage.setItem(KEY,ser());localStorage.setItem(LK,JSON.stringify(LOG));localStorage.setItem(RK,REV)}catch(e){}
       expanded.clear();sel=null;dash();refresh();setMsg('Загружены данные с другого устройства');
     }else if(!rem||!(rem.rev>=REV))await push();
